@@ -1,0 +1,23 @@
+{
+  "name": "hubot-answerhub",
+  "version": "1.0.0",
+  "description": "Reply to answerhub URLs being posted, with detailed information about the question to Slack.",
+  "main": "index.coffee",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opdude/hubot-answerhub"
+  },
+  "keywords": [
+    "hubot",
+    "answerhub"
+  ],
+  "author": "Daniel Hobley",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/opdude/hubot-answerhub/issues"
+  },
+  "homepage": "https://github.com/opdude/hubot-answerhub"
+}
