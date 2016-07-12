@@ -5,7 +5,9 @@ options =
     hostname: process.env.ANSWERHUB_HOSTNAME or "q.*"
     slack: if process.env.HUBOT_SLACK_TOKEN.length > 0 then true else false
     date_format: 'MMMM Do YYYY, h:mm:ss a'
+    bannedUsers: ["q"]
 
+isFoundIn = (term, array) -> array.indexOf(term) isnt -1
 
 make_headers = ->
   user = process.env.ANSWERHUB_USER
@@ -16,89 +18,92 @@ make_headers = ->
     Accept: "application/json"
     Authorization: "Basic #{auth}"
 
-slack_attachement = (msg, hostname, json, url) ->
-    try
+author = (msg, authorId, baseUrl, func) ->
+    url = "#{baseUrl}/services/v2/user/#{authorId}.json"
+
+    headers = make_headers()
+    msg.http(url)
+        .headers(headers)
+        .get() (err, res, body) ->
+            try
+                json = JSON.parse(body)
+                msg.robot.logger.debug json
+                func(json)
+
+            catch error
+                msg.robot.logger.debug(error)
+
+getAuthorUrl = (authorId, authorUsername, baseUrl) ->
+    return "#{baseUrl}/users/#{authorId}/#{authorUsername}.html"
+
+text = (msg, json, url, baseUrl, func) ->
+    author(msg, json.lastActiveUserId, baseUrl, (lastActiveUserJson) ->
+        if lastActiveUserJson != undefined
+            lastActiveUser = "#{lastActiveUserJson.realname}"
+            lastActiveUserUrl = getAuthorUrl(json.lastActiveUserId, lastActiveUserJson.username, baseUrl)
+        lastActive = moment.utc(json.lastActiveDate).format(options.date_format)
+        authorUrl = getAuthorUrl(json.author.id, json.author.username, baseUrl)
+
+        marked = ""
+        if json.marked == false
+            marked = "(*none accepted yet!*)"
+
+
         topics = json.topics.map (obj) ->
-          return obj.name
+            topicUrl = "#{baseUrl}/topics/#{obj.name}.html"
+            return "<#{topicUrl}|#{obj.name}>"
         .join(", ")
 
-        fields = [
-            {
-                title: "Question",
-                value: "<#{url}|#{json.title}>",
-                short: "false"
-            },
-            {
-                title: "Topics",
-                value: "#{topics}",
-                short: "true"
-            },
-            {
-                title: "Author",
-                value: "#{json.author.username}",
-                short: "true"
-            },
-            {
-                title: "Created Date",
-                value: moment.utc(json.creationDate).format(options.date_format),
-                short: "true"
-            }
-        ]
+        out = "<#{url}|#{json.title}> (#{topics}) by <#{authorUrl}|#{json.author.realname}>\n#{json.upVoteCount} upvotes, "+
+               "#{json.answerCount} answers #{marked}"
+        if lastActiveUserJson != undefined
+            out += "\n_most recent activity by <#{lastActiveUserUrl}|#{lastActiveUser}> #{lastActive}_"
 
+        func(msg, out))
+
+slack_attachment = (msg, text) ->
+    try
         msg.robot.emit 'slack.attachment',
             message: msg.message
             content:
-                mrkdwn_in: ["text", "fields", "author_name"]
-                color: "#3B73B9"
-                author_name: "Q"
-                author_link: "#{url}"
-                author_icon: "https://#{hostname}/themes/base/images/teamhub-logo.png"
-                text: ""
-                fields: fields
-                fallback: plain_msg(msg, hostname, json)
-
-
+                mrkdwn_in: ["pretext"]
+                pretext: text
+                fallback: text
     catch error
         msg.robot.logger.debug(error)
 
-plain_msg = (msg, hostname, json) ->
-    topics = json.topics.map (obj) ->
-      return obj.name
-    .join(", ")
-
-    message = "Question: #{json.title}\n" +
-            "Topics: #{topics}\n" +
-            "Author: #{json.author.username}\n" +
-            "Created Date: " + moment.utc(json.creationDate).format(options.date_format) + "\n"
-
-    return message
-
-plain = (msg, hostname, json) ->
+plain = (msg, text) ->
     try
-        msg.send(plain_msg(msg, hostname, json))
+        msg.send(text)
     catch error
         msg.robot.logger.debug(error)
 
-send_q_msg = (msg, hostname, json, url) ->
+send_q_msg = (msg, json, url, baseUrl) ->
     if options.slack
-        slack_attachement(msg, hostname, json, url)
+        text(msg, json, url, baseUrl, slack_attachment)
     else
-        plain(msg, hostname, json)
+        text(msg, json, url, baseUrl, plain)
 
 module.exports = (robot) ->
     robot.hear ///(http|https)://(#{options.hostname})\/questions\/([0-9]+).*html ///i, (msg) ->
+        robot.logger.debug msg.message.user
+
+        if isFoundIn(msg.message.user.name, options.bannedUsers)
+          return
+
         headers = make_headers()
         scheme = msg.match[1]
         hostname = msg.match[2]
         id = msg.match[3]
         url = "#{scheme}://#{hostname}/services/v2/question/#{id}.json"
+        baseUrl = "#{scheme}://#{hostname}"
         msg.http(url)
         .headers(headers  )
         .get() (err, res, body) ->
             try
                 json = JSON.parse(body)
                 robot.logger.debug json
-                send_q_msg(msg, hostname, json, msg.match[0])
+                send_q_msg(msg, json, msg.match[0], baseUrl)
 
             catch error
                 msg.robot.logger.debug(error)
