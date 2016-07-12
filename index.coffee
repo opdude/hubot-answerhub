@@ -41,7 +41,7 @@ text = (msg, json, url, baseUrl, func) ->
         if lastActiveUserJson != undefined
             lastActiveUser = "#{lastActiveUserJson.realname}"
             lastActiveUserUrl = getAuthorUrl(json.lastActiveUserId, lastActiveUserJson.username, baseUrl)
-        lastActive = moment.utc(json.lastActiveDate).format(options.date_format)
+        lastActive = moment.utc(json.lastActiveDate).fromNow()
         authorUrl = getAuthorUrl(json.author.id, json.author.username, baseUrl)
 
         marked = ""
